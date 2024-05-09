@@ -1,0 +1,47 @@
+on:
+  workflow_dispatch:
+    inputs:
+      release-type:
+        type: choice
+        description: What type of release is this?
+        required: true
+        options:
+          - major
+          - minor
+          - patch
+
+jobs:
+  create-release-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      branch-name: ${{ steps.create-branch.branch_name }}
+    steps:
+      # Checkout `dev`
+      - uses: actions/checkout@v4
+      - run: yarn && yarn build
+      # Increment version
+      - name: Increment version
+        run: |
+          # A workflow dispatch event lets the user specify what release type they want.
+          if [[ "${{ github.event_name }}" = "workflow_dispatch" ]]; then
+            RELEASE_TYPE=${{ github.event.inputs.release-type }}
+          # The regularly scheduled releases are always minor.
+          else
+            RELEASE_TYPE=minor
+          fi
+          # Increment the version as needed
+          npm --no-git-tag-version version $RELEASE_TYPE
+          git add package.json
+      # Create the new branch
+      - name: Checkout new branch, commit, push
+        id: create-branch
+        run: |
+          NEW_VERSION=$(jq -r ".version" package.json)
+          git checkout -b release-$NEW_VERSION
+          git config --global user.name "botty-mc-botface"
+          git config --global user.email "botbotbot@imabot.bot"
+          git commit -m "Incrementing version for $NEW_VERSION release"
+          git push --set-upstream origin release-$NEW_VERSION
+          echo "branch_name=release-$NEW_VERSION" >> "$GITHUB_OUTPUT"
